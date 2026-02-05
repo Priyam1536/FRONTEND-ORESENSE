@@ -161,10 +161,23 @@ const EnhancedLCAProcessFlow = ({ currentStep, formData }) => {
 
   // Handle mouse wheel for zooming
   const handleWheel = (e) => {
-    e.preventDefault();
-    const newZoom = zoom - e.deltaY * 0.001;
-    setZoom(Math.min(Math.max(0.5, newZoom), 2));
+    if (e.cancelable) {
+      e.preventDefault();
+    }
+    const delta = e.deltaY * 0.001;
+    setZoom(prevZoom => Math.min(Math.max(0.5, prevZoom - delta), 2));
   };
+
+  // Attach non-passive wheel listener to avoid React passive warning
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const onWheel = (event) => handleWheel(event);
+    container.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      container.removeEventListener('wheel', onWheel);
+    };
+  }, []);
 
   // Handle node click
   const handleNodeClick = (nodeId) => {
@@ -480,7 +493,6 @@ const EnhancedLCAProcessFlow = ({ currentStep, formData }) => {
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
-        onWheel={handleWheel}
       >
         <g
           transform={`translate(${position.x}, ${position.y}) scale(${zoom})`}
@@ -773,7 +785,7 @@ const EnhancedLCAProcessFlow = ({ currentStep, formData }) => {
       </svg>
 
       {/* CSS animations for particles */}
-      <style jsx>{`
+      <style>{`
         @keyframes pulse {
           0%, 100% { opacity: 0.7; transform: scale(1); }
           50% { opacity: 1; transform: scale(1.2); }

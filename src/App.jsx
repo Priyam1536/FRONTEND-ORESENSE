@@ -105,6 +105,17 @@ const AppContent = () => {
     verifyToken();
   }, []);
 
+  useEffect(() => {
+    const handleUserDataUpdated = () => {
+      setUserData(tokenStorage.getUserData());
+    };
+
+    window.addEventListener('userDataUpdated', handleUserDataUpdated);
+    return () => {
+      window.removeEventListener('userDataUpdated', handleUserDataUpdated);
+    };
+  }, []);
+
   const handleLogin = (userData) => {
     setIsLoggedIn(true);
     setUserData(userData);

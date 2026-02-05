@@ -1,20 +1,20 @@
-import React, { useState } from 'react';
-import { User, Mail, Phone, MapPin, Calendar, Camera, Edit, Save, X, Bell, Shield, Globe, Palette } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { User, Mail, Phone, MapPin, Calendar, Camera, Edit, Save, X, Bell, Shield, Palette } from 'lucide-react';
+import { authAPI, tokenStorage } from '../utils/api.jsx';
 
 const UserProfile = () => {
   const [activeTab, setActiveTab] = useState('profile');
   const [isEditing, setIsEditing] = useState(false);
   const [profileData, setProfileData] = useState({
-    firstName: 'Alice',
-    lastName: 'Johnson',
-    email: 'alice.johnson@oresense.ai',
-    phone: '+1 (555) 123-4567',
-    location: 'San Francisco, CA',
-    department: 'Environmental Analysis',
-    position: 'Senior LCA Analyst',
-    joinDate: '2023-01-15',
-    bio: 'Environmental scientist with 8+ years of experience in life cycle assessment and sustainability consulting.',
-    avatar: 'AJ'
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    location: '',
+    department: '',
+    position: '',
+    joinDate: '',
+    bio: ''
   });
 
   const [preferences, setPreferences] = useState({
@@ -36,20 +36,179 @@ const UserProfile = () => {
       profileVisibility: 'team',
       activitySharing: true,
       dataSharing: false,
-      twoFactorAuth: true
+      twoFactorAuth: false
     }
   });
 
+  const [isLoading, setIsLoading] = useState(true);
+  const [saveMessage, setSaveMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
+  const [prefsDirty, setPrefsDirty] = useState(false);
+
   const [tempData, setTempData] = useState({ ...profileData });
+
+  const getInitials = (firstName, lastName, fallbackName = '') => {
+    const combined = `${firstName || ''} ${lastName || ''}`.trim();
+    if (combined) {
+      return combined
+        .split(' ')
+        .filter(Boolean)
+        .slice(0, 2)
+        .map(part => part[0].toUpperCase())
+        .join('');
+    }
+    if (fallbackName) {
+      return fallbackName
+        .split(' ')
+        .filter(Boolean)
+        .slice(0, 2)
+        .map(part => part[0].toUpperCase())
+        .join('');
+    }
+    return 'U';
+  };
+
+  const loadProfile = async () => {
+    const token = tokenStorage.getToken();
+    if (!token) {
+      setIsLoading(false);
+      setErrorMessage('Please log in to view your profile.');
+      return;
+    }
+
+    setIsLoading(true);
+    setErrorMessage('');
+
+    try {
+      const data = await authAPI.getProfile(token);
+      const loadedProfile = {
+        firstName: data.firstName || '',
+        lastName: data.lastName || '',
+        email: data.email || '',
+        phone: data.phone || '',
+        location: data.location || '',
+        department: data.department || '',
+        position: data.position || '',
+        joinDate: data.joinDate || '',
+        bio: data.bio || ''
+      };
+
+      setProfileData(loadedProfile);
+      setTempData(loadedProfile);
+
+      if (data.preferences) {
+        setPreferences(prev => ({
+          ...prev,
+          ...data.preferences,
+          notifications: {
+            ...prev.notifications,
+            ...data.preferences.notifications
+          },
+          display: {
+            ...prev.display,
+            ...data.preferences.display
+          },
+          privacy: {
+            ...prev.privacy,
+            ...data.preferences.privacy
+          }
+        }));
+      }
+    } catch (error) {
+      setErrorMessage(error.message || 'Failed to load profile');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadProfile();
+  }, []);
 
   const handleEdit = () => {
     setIsEditing(true);
     setTempData({ ...profileData });
   };
 
-  const handleSave = () => {
-    setProfileData({ ...tempData });
-    setIsEditing(false);
+  const handleSave = async () => {
+    const token = tokenStorage.getToken();
+    if (!token) {
+      setErrorMessage('Please log in to update your profile.');
+      return;
+    }
+
+    setSaveMessage('');
+    setErrorMessage('');
+
+    try {
+      const updated = await authAPI.updateProfile(token, {
+        ...tempData,
+        preferences
+      });
+
+      const updatedProfile = {
+        firstName: updated.firstName || '',
+        lastName: updated.lastName || '',
+        email: updated.email || '',
+        phone: updated.phone || '',
+        location: updated.location || '',
+        department: updated.department || '',
+        position: updated.position || '',
+        joinDate: updated.joinDate || '',
+        bio: updated.bio || ''
+      };
+
+      setProfileData(updatedProfile);
+      setTempData(updatedProfile);
+      setPreferences(prev => ({
+        ...prev,
+        ...updated.preferences,
+        notifications: {
+          ...prev.notifications,
+          ...updated.preferences?.notifications
+        },
+        display: {
+          ...prev.display,
+          ...updated.preferences?.display
+        },
+        privacy: {
+          ...prev.privacy,
+          ...updated.preferences?.privacy
+        }
+      }));
+
+      tokenStorage.setUserData({
+        id: updated._id,
+        name: updated.name || `${updatedProfile.firstName} ${updatedProfile.lastName}`.trim(),
+        email: updatedProfile.email
+      });
+      window.dispatchEvent(new Event('userDataUpdated'));
+
+      setIsEditing(false);
+      setPrefsDirty(false);
+      setSaveMessage('Profile updated successfully.');
+    } catch (error) {
+      setErrorMessage(error.message || 'Failed to update profile');
+    }
+  };
+
+  const handleSavePreferences = async () => {
+    const token = tokenStorage.getToken();
+    if (!token) {
+      setErrorMessage('Please log in to update preferences.');
+      return;
+    }
+
+    setSaveMessage('');
+    setErrorMessage('');
+
+    try {
+      await authAPI.updateProfile(token, { preferences });
+      setPrefsDirty(false);
+      setSaveMessage('Preferences saved successfully.');
+    } catch (error) {
+      setErrorMessage(error.message || 'Failed to update preferences');
+    }
   };
 
   const handleCancel = () => {
@@ -72,6 +231,7 @@ const UserProfile = () => {
         [field]: value
       }
     }));
+    setPrefsDirty(true);
   };
 
   const tabs = [
@@ -114,6 +274,12 @@ const UserProfile = () => {
     );
   };
 
+  const displayProfile = isEditing ? tempData : profileData;
+  const avatarText = getInitials(displayProfile.firstName, displayProfile.lastName, `${displayProfile.firstName || ''} ${displayProfile.lastName || ''}`.trim());
+  const joinedDateText = displayProfile.joinDate
+    ? new Date(displayProfile.joinDate).toLocaleDateString()
+    : 'Not specified';
+
   return (
     <div className="p-6 bg-gray-50 min-h-full overflow-y-auto">
       {/* Header */}
@@ -122,6 +288,22 @@ const UserProfile = () => {
         <p className="text-gray-600 mt-1">Manage your personal information, preferences, and account settings</p>
       </div>
 
+      {isLoading && (
+        <div className="mb-6 text-sm text-gray-600">Loading profile...</div>
+      )}
+
+      {errorMessage && (
+        <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+          {errorMessage}
+        </div>
+      )}
+
+      {saveMessage && (
+        <div className="mb-6 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm">
+          {saveMessage}
+        </div>
+      )}
+
       <div className="flex gap-6">
         {/* Profile Card */}
         <div className="w-80 flex-shrink-0">
@@ -129,35 +311,35 @@ const UserProfile = () => {
             <div className="text-center">
               <div className="relative inline-block mb-4">
                 <div className="w-24 h-24 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-2xl font-bold">
-                  {profileData.avatar}
+                  {avatarText}
                 </div>
                 <button className="absolute bottom-0 right-0 p-2 bg-white rounded-full shadow-lg border border-gray-200 hover:bg-gray-50">
                   <Camera className="w-4 h-4 text-gray-600" />
                 </button>
               </div>
               <h2 className="text-xl font-bold text-gray-900">
-                {profileData.firstName} {profileData.lastName}
+                {displayProfile.firstName} {displayProfile.lastName}
               </h2>
-              <p className="text-gray-600">{profileData.position}</p>
-              <p className="text-sm text-gray-500 mt-1">{profileData.department}</p>
+              <p className="text-gray-600">{displayProfile.position}</p>
+              <p className="text-sm text-gray-500 mt-1">{displayProfile.department}</p>
             </div>
             
             <div className="mt-6 space-y-3">
               <div className="flex items-center gap-3 text-sm">
                 <Mail className="w-4 h-4 text-gray-400" />
-                <span className="text-gray-600">{profileData.email}</span>
+                <span className="text-gray-600">{displayProfile.email}</span>
               </div>
               <div className="flex items-center gap-3 text-sm">
                 <Phone className="w-4 h-4 text-gray-400" />
-                <span className="text-gray-600">{profileData.phone}</span>
+                <span className="text-gray-600">{displayProfile.phone || 'Not specified'}</span>
               </div>
               <div className="flex items-center gap-3 text-sm">
                 <MapPin className="w-4 h-4 text-gray-400" />
-                <span className="text-gray-600">{profileData.location}</span>
+                <span className="text-gray-600">{displayProfile.location || 'Not specified'}</span>
               </div>
               <div className="flex items-center gap-3 text-sm">
                 <Calendar className="w-4 h-4 text-gray-400" />
-                <span className="text-gray-600">Joined {profileData.joinDate}</span>
+                <span className="text-gray-600">Joined {joinedDateText}</span>
               </div>
             </div>
           </div>
@@ -391,6 +573,20 @@ const UserProfile = () => {
                         </select>
                       </div>
                     </div>
+                  </div>
+
+                  <div className="pt-2">
+                    <button
+                      onClick={handleSavePreferences}
+                      disabled={!prefsDirty}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        prefsDirty
+                          ? 'bg-blue-600 text-white hover:bg-blue-700'
+                          : 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                      }`}
+                    >
+                      Save Preferences
+                    </button>
                   </div>
                 </div>
               </div>

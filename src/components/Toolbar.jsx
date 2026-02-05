@@ -1,10 +1,8 @@
 import React from 'react';
 import { 
   Plus,
-  Database,
   Upload,
   Download,
-  Play,
   Save,
   RefreshCw,
   Trash2,

@@ -183,6 +183,8 @@ const LCAForm = ({ onComplete, onCancel, onViewDetailedResults }) => {
   // Backend API URL - should come from environment variables in production
   const API_URL = 'http://localhost:8000/api/lca';
 
+  const isMissingValue = (value) => value === undefined || value === null || value === '';
+
   // Generic input change handler
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -267,17 +269,22 @@ const LCAForm = ({ onComplete, onCancel, onViewDetailedResults }) => {
   };
 
   // Function to get parameter suggestions (could be used for incomplete fields)
-  const getSuggestions = async (partialData) => {
+  const getSuggestions = async (partialData, targetFields = null) => {
     setIsLoading(true);
     setError(null);
     
     try {
+      const payload = { formData: partialData };
+      if (Array.isArray(targetFields) && targetFields.length > 0) {
+        payload.targetFields = targetFields;
+      }
+
       const response = await fetch(`${API_URL}/suggest-parameters`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ formData: partialData }),
+        body: JSON.stringify(payload),
       });
       
       if (!response.ok) {
@@ -288,12 +295,21 @@ const LCAForm = ({ onComplete, onCancel, onViewDetailedResults }) => {
       console.log("AI Suggestions:", data);
       
       if (data.success && data.suggestions) {
-        // Apply suggestions to form data
-        setFormData(prev => ({
-          ...prev,
-          ...data.suggestions
-        }));
-        return data.suggestions;
+        const cleanedSuggestions = Object.fromEntries(
+          Object.entries(data.suggestions).filter(([, value]) => !isMissingValue(value))
+        );
+
+        // Apply suggestions to form data (do not override existing inputs)
+        const missingOnly = Object.fromEntries(
+          Object.entries(cleanedSuggestions).filter(([key]) => isMissingValue(partialData[key]))
+        );
+        if (Object.keys(missingOnly).length > 0) {
+          setFormData(prev => ({
+            ...prev,
+            ...missingOnly
+          }));
+        }
+        return missingOnly;
       } else {
         throw new Error(data.message || 'Failed to get suggestions');
       }
@@ -728,11 +744,17 @@ const LCAForm = ({ onComplete, onCancel, onViewDetailedResults }) => {
     try {
       const stepKey = `step${currentStep}`;
       const currentStepFields = formConfig[stepKey]?.fields.map(f => f.name) || [];
+      const missingStepFields = currentStepFields.filter(field => isMissingValue(formData[field]));
+
+      if (missingStepFields.length === 0) {
+        setError("All fields for this step are already filled.");
+        return;
+      }
       
       // Get suggestions from the backend using all data entered so far
-      const suggestions = await getSuggestions(formData);
+      const suggestions = await getSuggestions(formData, missingStepFields);
       
-      if (suggestions) {
+      if (suggestions && Object.keys(suggestions).length > 0) {
         // Filter suggestions to only include fields for the current step
         const relevantSuggestions = {};
         let hasRelevantSuggestions = false;
@@ -763,6 +785,8 @@ const LCAForm = ({ onComplete, onCancel, onViewDetailedResults }) => {
         } else {
           setError("No relevant predictions available for this step. Try adding more information first.");
         }
+      } else {
+        setError("No relevant predictions available for this step. Try adding more information first.");
       }
     } catch (error) {
       console.error('Error predicting fields:', error);
@@ -952,7 +976,7 @@ const LCAForm = ({ onComplete, onCancel, onViewDetailedResults }) => {
                 onClick={() => { 
                   setIsCompleted(false); 
                   setCurrentStep(1); 
-                  setFormData({}); 
+                  setFormData(initializeFormData()); 
                   setAiInsights(null);
                   setError(null);
                 }}

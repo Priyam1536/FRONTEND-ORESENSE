@@ -67,6 +67,135 @@ export const authAPI = {
       throw error;
     }
   },
+
+  // Update user profile (authenticated endpoint)
+  updateProfile: async (token, payload) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/profile`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to update profile');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Update profile error:', error);
+      throw error;
+    }
+  },
+};
+
+// Team management API calls
+export const teamAPI = {
+  getMembers: async (token) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/team/members`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch team members');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Get members error:', error);
+      throw error;
+    }
+  },
+
+  getInvitations: async (token, status = '') => {
+    try {
+      const query = status ? `?status=${encodeURIComponent(status)}` : '';
+      const response = await fetch(`${API_BASE_URL}/team/invitations${query}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch invitations');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Get invitations error:', error);
+      throw error;
+    }
+  },
+
+  sendInvitation: async (token, payload) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/team/invitations`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to send invitation');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Send invitation error:', error);
+      throw error;
+    }
+  },
+
+  cancelInvitation: async (token, invitationId) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/team/invitations/${invitationId}/cancel`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to cancel invitation');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Cancel invitation error:', error);
+      throw error;
+    }
+  },
+
+  resendInvitation: async (token, invitationId) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/team/invitations/${invitationId}/resend`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to resend invitation');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Resend invitation error:', error);
+      throw error;
+    }
+  }
 };
 
 // Local storage functions for token management
@@ -302,4 +431,4 @@ export const reportUtils = {
   }
 };
 
-export default { authAPI, tokenStorage, reportUtils };
+export default { authAPI, teamAPI, tokenStorage, reportUtils };

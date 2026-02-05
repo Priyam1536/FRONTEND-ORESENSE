@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronDown, FileText, Download, Upload, Database, LogOut, Undo, Redo, Copy, Clipboard as Paste, Settings, Eye, Navigation, Play, Calculator, BarChart3, Shuffle, TrendingUp, AppWindow as Window, HelpCircle, BookOpen, Info, RefreshCw, User } from 'lucide-react';
+import { ChevronDown, FileText, Download, Upload, LogOut, Undo, Redo, Copy, Clipboard as Paste, Settings, Eye, Navigation, Calculator, BarChart3, AppWindow as Window, BookOpen, Info, RefreshCw, User } from 'lucide-react';
 import Logo from './Logo.jsx';
 
 const MenuBar = ({ onMenuAction, userName = "Priyam", onProfileAction }) => {

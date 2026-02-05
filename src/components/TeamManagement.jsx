@@ -1,72 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Users, UserPlus, Mail, Shield, MoreHorizontal, Search, Filter, Edit, Trash2, Crown, User } from 'lucide-react';
+import { teamAPI, tokenStorage } from '../utils/api.jsx';
 
 const TeamManagement = () => {
   const [activeTab, setActiveTab] = useState('team');
   const [searchTerm, setSearchTerm] = useState('');
   const [showInviteModal, setShowInviteModal] = useState(false);
-
-  const teamMembers = [
-    {
-      id: 1,
-      name: 'Alice Johnson',
-      email: 'alice.johnson@oresense.ai',
-      role: 'Admin',
-      status: 'Active',
-      lastActive: '2 hours ago',
-      projects: 12,
-      avatar: 'AJ'
-    },
-    {
-      id: 2,
-      name: 'Bob Smith',
-      email: 'bob.smith@oresense.ai',
-      role: 'Analyst',
-      status: 'Active',
-      lastActive: '1 day ago',
-      projects: 8,
-      avatar: 'BS'
-    },
-    {
-      id: 3,
-      name: 'Carol Davis',
-      email: 'carol.davis@contractor.com',
-      role: 'Collaborator',
-      status: 'Pending',
-      lastActive: 'Never',
-      projects: 0,
-      avatar: 'CD'
-    },
-    {
-      id: 4,
-      name: 'David Wilson',
-      email: 'david.wilson@oresense.ai',
-      role: 'Viewer',
-      status: 'Inactive',
-      lastActive: '1 week ago',
-      projects: 3,
-      avatar: 'DW'
-    }
-  ];
-
-  const pendingInvitations = [
-    {
-      id: 1,
-      email: 'john.doe@partner.com',
-      role: 'Analyst',
-      invitedBy: 'Alice Johnson',
-      invitedDate: '2024-01-15',
-      status: 'Pending'
-    },
-    {
-      id: 2,
-      email: 'sarah.miller@contractor.com',
-      role: 'Collaborator',
-      invitedBy: 'Bob Smith',
-      invitedDate: '2024-01-12',
-      status: 'Expired'
-    }
-  ];
+  const [teamMembers, setTeamMembers] = useState([]);
+  const [pendingInvitations, setPendingInvitations] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [inviteForm, setInviteForm] = useState({
+    email: '',
+    role: 'Viewer',
+    message: ''
+  });
 
   const rolePermissions = {
     Admin: ['Full Access', 'User Management', 'System Settings', 'Export Data'],
@@ -74,6 +22,104 @@ const TeamManagement = () => {
     Collaborator: ['View Shared Projects', 'Comment', 'Basic Export'],
     Viewer: ['View Only', 'Basic Reports']
   };
+
+  const getInitials = (name = '') => {
+    return name
+      .split(' ')
+      .filter(Boolean)
+      .slice(0, 2)
+      .map(part => part[0].toUpperCase())
+      .join('') || 'U';
+  };
+
+  const loadTeamData = async () => {
+    const token = tokenStorage.getToken();
+    if (!token) {
+      setErrorMessage('Please log in to manage your team.');
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    setErrorMessage('');
+
+    try {
+      const [membersResponse, invitationsResponse] = await Promise.all([
+        teamAPI.getMembers(token),
+        teamAPI.getInvitations(token)
+      ]);
+
+      setTeamMembers(membersResponse.members || []);
+      setPendingInvitations(invitationsResponse.invitations || []);
+    } catch (error) {
+      setErrorMessage(error.message || 'Failed to load team data');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadTeamData();
+  }, []);
+
+  const handleInviteInputChange = (field, value) => {
+    setInviteForm(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleSendInvite = async () => {
+    const token = tokenStorage.getToken();
+    if (!token) {
+      setErrorMessage('Please log in to send invitations.');
+      return;
+    }
+
+    setErrorMessage('');
+
+    try {
+      await teamAPI.sendInvitation(token, inviteForm);
+      setInviteForm({ email: '', role: 'Viewer', message: '' });
+      setShowInviteModal(false);
+      loadTeamData();
+    } catch (error) {
+      setErrorMessage(error.message || 'Failed to send invitation');
+    }
+  };
+
+  const handleCancelInvitation = async (invitationId) => {
+    const token = tokenStorage.getToken();
+    if (!token) return;
+
+    try {
+      await teamAPI.cancelInvitation(token, invitationId);
+      loadTeamData();
+    } catch (error) {
+      setErrorMessage(error.message || 'Failed to cancel invitation');
+    }
+  };
+
+  const handleResendInvitation = async (invitationId) => {
+    const token = tokenStorage.getToken();
+    if (!token) return;
+
+    try {
+      await teamAPI.resendInvitation(token, invitationId);
+      loadTeamData();
+    } catch (error) {
+      setErrorMessage(error.message || 'Failed to resend invitation');
+    }
+  };
+
+  const filteredTeamMembers = teamMembers.filter(member =>
+    member.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    member.email?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const filteredInvitations = pendingInvitations.filter(invitation =>
+    invitation.email?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   const getRoleIcon = (role) => {
     switch (role) {
@@ -91,12 +137,17 @@ const TeamManagement = () => {
       Active: 'bg-green-100 text-green-800',
       Inactive: 'bg-gray-100 text-gray-800',
       Pending: 'bg-yellow-100 text-yellow-800',
-      Expired: 'bg-red-100 text-red-800'
+      Expired: 'bg-red-100 text-red-800',
+      Canceled: 'bg-gray-100 text-gray-800',
+      Accepted: 'bg-green-100 text-green-800',
+      Declined: 'bg-red-100 text-red-800'
     };
     
+    const className = styles[status] || 'bg-gray-100 text-gray-800';
+
     return (
-      <span className={`px-2 py-1 rounded-full text-xs font-medium ${styles[status]}`}>
-        {status}
+      <span className={`px-2 py-1 rounded-full text-xs font-medium ${className}`}>
+        {status || 'Unknown'}
       </span>
     );
   };
@@ -110,13 +161,19 @@ const TeamManagement = () => {
             <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
             <input
               type="email"
+              value={inviteForm.email}
+              onChange={(e) => handleInviteInputChange('email', e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               placeholder="colleague@company.com"
             />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
-            <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+            <select
+              value={inviteForm.role}
+              onChange={(e) => handleInviteInputChange('role', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
               <option value="Viewer">Viewer</option>
               <option value="Collaborator">Collaborator</option>
               <option value="Analyst">Analyst</option>
@@ -127,6 +184,8 @@ const TeamManagement = () => {
             <label className="block text-sm font-medium text-gray-700 mb-1">Message (Optional)</label>
             <textarea
               rows="3"
+              value={inviteForm.message}
+              onChange={(e) => handleInviteInputChange('message', e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               placeholder="Add a personal message..."
             />
@@ -140,8 +199,9 @@ const TeamManagement = () => {
             Cancel
           </button>
           <button
-            onClick={() => setShowInviteModal(false)}
-            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            onClick={handleSendInvite}
+            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            disabled={!inviteForm.email}
           >
             Send Invite
           </button>
@@ -167,6 +227,16 @@ const TeamManagement = () => {
             Invite Member
           </button>
         </div>
+
+        {isLoading && (
+          <div className="mb-4 text-sm text-gray-600">Loading team data...</div>
+        )}
+
+        {errorMessage && (
+          <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+            {errorMessage}
+          </div>
+        )}
 
         {/* Navigation Tabs */}
         <div className="border-b border-gray-200">
@@ -241,12 +311,12 @@ const TeamManagement = () => {
                 </tr>
               </thead>
               <tbody>
-                {teamMembers.map((member) => (
+                {filteredTeamMembers.map((member) => (
                   <tr key={member.id} className="border-b border-gray-100 hover:bg-gray-50">
                     <td className="py-4 px-6">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-700 font-medium">
-                          {member.avatar}
+                          {getInitials(member.name)}
                         </div>
                         <div>
                           <p className="font-medium text-gray-900">{member.name}</p>
@@ -261,8 +331,10 @@ const TeamManagement = () => {
                       </div>
                     </td>
                     <td className="py-4 px-6">{getStatusBadge(member.status)}</td>
-                    <td className="py-4 px-6 text-gray-600">{member.lastActive}</td>
-                    <td className="py-4 px-6 text-gray-600">{member.projects}</td>
+                    <td className="py-4 px-6 text-gray-600">
+                      {member.lastActive ? new Date(member.lastActive).toLocaleString() : 'Recently'}
+                    </td>
+                    <td className="py-4 px-6 text-gray-600">{member.projects ?? 0}</td>
                     <td className="py-4 px-6">
                       <div className="flex items-center gap-2">
                         <button className="p-1 hover:bg-gray-100 rounded">
@@ -300,7 +372,7 @@ const TeamManagement = () => {
                 </tr>
               </thead>
               <tbody>
-                {pendingInvitations.map((invitation) => (
+                {filteredInvitations.map((invitation) => (
                   <tr key={invitation.id} className="border-b border-gray-100 hover:bg-gray-50">
                     <td className="py-4 px-6">
                       <div className="flex items-center gap-3">
@@ -310,14 +382,22 @@ const TeamManagement = () => {
                     </td>
                     <td className="py-4 px-6">{invitation.role}</td>
                     <td className="py-4 px-6 text-gray-600">{invitation.invitedBy}</td>
-                    <td className="py-4 px-6 text-gray-600">{invitation.invitedDate}</td>
+                    <td className="py-4 px-6 text-gray-600">
+                      {invitation.invitedDate ? new Date(invitation.invitedDate).toLocaleDateString() : ''}
+                    </td>
                     <td className="py-4 px-6">{getStatusBadge(invitation.status)}</td>
                     <td className="py-4 px-6">
                       <div className="flex items-center gap-2">
-                        <button className="text-blue-600 hover:text-blue-800 text-sm font-medium">
+                        <button
+                          onClick={() => handleResendInvitation(invitation.id)}
+                          className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                        >
                           Resend
                         </button>
-                        <button className="text-red-600 hover:text-red-800 text-sm font-medium">
+                        <button
+                          onClick={() => handleCancelInvitation(invitation.id)}
+                          className="text-red-600 hover:text-red-800 text-sm font-medium"
+                        >
                           Cancel
                         </button>
                       </div>
