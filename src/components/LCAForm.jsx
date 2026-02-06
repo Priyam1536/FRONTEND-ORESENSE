@@ -177,6 +177,7 @@ const LCAForm = ({ onComplete, onCancel, onViewDetailedResults }) => {
   // Add new state variables for API interactions
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [notice, setNotice] = useState(null);
   const [aiInsights, setAiInsights] = useState(null);
   const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
 
@@ -229,6 +230,7 @@ const LCAForm = ({ onComplete, onCancel, onViewDetailedResults }) => {
   const generateAiInsights = async () => {
     setIsGeneratingInsights(true);
     setError(null);
+    setNotice(null);
     
     try {
       const response = await fetch(`${API_URL}/generate-recommendations`, {
@@ -272,6 +274,7 @@ const LCAForm = ({ onComplete, onCancel, onViewDetailedResults }) => {
   const getSuggestions = async (partialData, targetFields = null) => {
     setIsLoading(true);
     setError(null);
+    setNotice(null);
     
     try {
       const payload = { formData: partialData };
@@ -295,6 +298,9 @@ const LCAForm = ({ onComplete, onCancel, onViewDetailedResults }) => {
       console.log("AI Suggestions:", data);
       
       if (data.success && data.suggestions) {
+        if (data.warning) {
+          setNotice(data.warning);
+        }
         const cleanedSuggestions = Object.fromEntries(
           Object.entries(data.suggestions).filter(([, value]) => !isMissingValue(value))
         );
@@ -531,6 +537,13 @@ const LCAForm = ({ onComplete, onCancel, onViewDetailedResults }) => {
               {error}
             </div>
           )}
+
+          {notice && !error && (
+            <div className="mt-3 bg-blue-50 text-blue-800 p-2 rounded-md text-sm border border-blue-200 flex items-center">
+              <AlertCircle className="h-4 w-4 mr-2" />
+              {notice}
+            </div>
+          )}
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -738,6 +751,7 @@ const LCAForm = ({ onComplete, onCancel, onViewDetailedResults }) => {
   const predictMissingFields = async () => {
     setIsPredicting(true);
     setError(null);
+    setNotice(null);
     setPredictionSuccess(false);
     setPredictedFields([]);
     
@@ -747,7 +761,13 @@ const LCAForm = ({ onComplete, onCancel, onViewDetailedResults }) => {
       const missingStepFields = currentStepFields.filter(field => isMissingValue(formData[field]));
 
       if (missingStepFields.length === 0) {
-        setError("All fields for this step are already filled.");
+        setNotice("All fields for this step are already filled.");
+        return;
+      }
+
+      const hasAnyInput = Object.values(formData).some(value => !isMissingValue(value));
+      if (!hasAnyInput) {
+        setNotice("Add at least one value before requesting predictions.");
         return;
       }
       
@@ -783,10 +803,10 @@ const LCAForm = ({ onComplete, onCancel, onViewDetailedResults }) => {
             setPredictionSuccess(false);
           }, 3000);
         } else {
-          setError("No relevant predictions available for this step. Try adding more information first.");
+          setNotice("No relevant predictions available for this step. Try adding more information first.");
         }
       } else {
-        setError("No relevant predictions available for this step. Try adding more information first.");
+        setNotice("No relevant predictions available for this step. Try adding more information first.");
       }
     } catch (error) {
       console.error('Error predicting fields:', error);
@@ -979,6 +999,7 @@ const LCAForm = ({ onComplete, onCancel, onViewDetailedResults }) => {
                   setFormData(initializeFormData()); 
                   setAiInsights(null);
                   setError(null);
+                  setNotice(null);
                 }}
                 className="text-blue-600 hover:text-blue-800 hover:underline text-sm"
               >

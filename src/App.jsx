@@ -1,25 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import LoginPage from './components/LoginPage.jsx';
-import LCAForm from './components/LCAForm.jsx';
-import ReportsDashboard from './components/ReportsDashboard.jsx';
 import MenuBar from './components/MenuBar.jsx';
 import Toolbar from './components/Toolbar.jsx';
-import NavigationTree from './components/NavigationTree.jsx';
 import EditorArea from './components/EditorArea.jsx';
-import Dashboard from './components/Dashboard';
-import LCAResultsPage from './components/LCAResultsPage.jsx';
 import Sidebar from './components/Sidebar.jsx';
-import ImpactResults from './components/ImpactResults.jsx';
-import TeamManagement from './components/TeamManagement.jsx';
-import Parameters from './components/Parameters.jsx';
-import UserProfile from './components/UserProfile.jsx';
-import AppSettings from './components/Settings.jsx';
-import FlowTemplates from './components/FlowTemplates.jsx';
 import { NotificationProvider, useNotification } from './components/NotificationSystem.jsx';
 
 import { tokenStorage, authAPI } from './utils/api.jsx';
 
-import PathwayComparisonModal from './components/PathwayComparisonModal.jsx';
+const LCAForm = lazy(() => import('./components/LCAForm.jsx'));
+const ReportsDashboard = lazy(() => import('./components/ReportsDashboard.jsx'));
+const LCAResultsPage = lazy(() => import('./components/LCAResultsPage.jsx'));
+const ImpactResults = lazy(() => import('./components/ImpactResults.jsx'));
+const TeamManagement = lazy(() => import('./components/TeamManagement.jsx'));
+const Parameters = lazy(() => import('./components/Parameters.jsx'));
+const UserProfile = lazy(() => import('./components/UserProfile.jsx'));
+const AppSettings = lazy(() => import('./components/Settings.jsx'));
+const FlowTemplates = lazy(() => import('./components/FlowTemplates.jsx'));
+const PathwayComparisonModal = lazy(() => import('./components/PathwayComparisonModal.jsx'));
 
 
 const AppContent = () => {
@@ -40,6 +38,25 @@ const AppContent = () => {
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [flowTemplates, setFlowTemplates] = useState([]);
   const [currentParameters, setCurrentParameters] = useState({});
+  const [isBootstrapping, setIsBootstrapping] = useState(true);
+  const transitionTimerRef = useRef(null);
+  const prefetchDoneRef = useRef(false);
+
+  const prefetchAppBundles = () => {
+    if (prefetchDoneRef.current) return;
+    prefetchDoneRef.current = true;
+    // Fire-and-forget prefetch to reduce post-login load time
+    import('./components/ReportsDashboard.jsx');
+    import('./components/LCAForm.jsx');
+    import('./components/ImpactResults.jsx');
+    import('./components/TeamManagement.jsx');
+    import('./components/Parameters.jsx');
+    import('./components/UserProfile.jsx');
+    import('./components/Settings.jsx');
+    import('./components/FlowTemplates.jsx');
+    import('./components/PathwayComparisonModal.jsx');
+    import('./components/LCAResultsPage.jsx');
+  };
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -92,6 +109,7 @@ const AppContent = () => {
           const profile = await authAPI.getProfile(token);
           setUserData(profile);
           setIsLoggedIn(true);
+          prefetchAppBundles();
         } catch (error) {
           // Token is invalid, clear it
           console.error("Invalid token:", error);
@@ -100,9 +118,15 @@ const AppContent = () => {
           setIsLoggedIn(false);
         }
       }
+      setIsBootstrapping(false);
     };
     
     verifyToken();
+    return () => {
+      if (transitionTimerRef.current) {
+        clearTimeout(transitionTimerRef.current);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -119,6 +143,7 @@ const AppContent = () => {
   const handleLogin = (userData) => {
     setIsLoggedIn(true);
     setUserData(userData);
+    prefetchAppBundles();
   };
 
   const handleLogout = () => {
@@ -584,6 +609,10 @@ const AppContent = () => {
   };
 
   // Render login page if not logged in
+  if (isBootstrapping) {
+    return null;
+  }
+
   if (!isLoggedIn) {
     return <LoginPage onLogin={handleLogin} />;
   }
@@ -591,18 +620,22 @@ const AppContent = () => {
   // Render LCA form if showing form
   if (showLCAForm) {
     return (
-      <LCAForm 
-        onComplete={handleLCAFormComplete}
-        onCancel={handleLCAFormCancel}
-      />
+      <Suspense fallback={null}>
+        <LCAForm 
+          onComplete={handleLCAFormComplete}
+          onCancel={handleLCAFormCancel}
+        />
+      </Suspense>
     );
   }
 
   if (showPathwayComparison) {
     return (
-      <PathwayComparisonModal 
-        onClose={handleClosePathwayComparison}
-      />
+      <Suspense fallback={null}>
+        <PathwayComparisonModal 
+          onClose={handleClosePathwayComparison}
+        />
+      </Suspense>
     );
   }
 
@@ -616,65 +649,67 @@ const AppContent = () => {
       />
       <Toolbar onToolbarAction={handleToolbarAction} />
       
-      <div className="flex-1 flex overflow-hidden">
-        <div className="w-64 flex-shrink-0">
-          <Sidebar onItemSelect={handleItemSelect} activeItem={activeSidebarItem} />
-        </div>
-        
-        <div className="flex-1 flex flex-col">
-          {tabs.length === 0 ? (
-            <div className="flex-1 overflow-y-auto bg-gray-50">
-              {activeSidebarItem === 'dashboard' && (
-                <div className="p-6">
-                  <h1 className="text-2xl font-bold text-gray-900 mb-6">LCA Reports Dashboard</h1>
-                  <ReportsDashboard 
-                    reports={reports}
-                    onNewReport={handleNewReport}
-                    onComparePathways={handleComparePathways}
+      <Suspense fallback={null}>
+        <div className="flex-1 flex overflow-hidden">
+          <div className="w-64 flex-shrink-0">
+            <Sidebar onItemSelect={handleItemSelect} activeItem={activeSidebarItem} />
+          </div>
+          
+          <div className="flex-1 flex flex-col">
+            {tabs.length === 0 ? (
+              <div className="flex-1 overflow-y-auto bg-gray-50">
+                {activeSidebarItem === 'dashboard' && (
+                  <div className="p-6">
+                    <h1 className="text-2xl font-bold text-gray-900 mb-6">LCA Reports Dashboard</h1>
+                    <ReportsDashboard 
+                      reports={reports}
+                      onNewReport={handleNewReport}
+                      onComparePathways={handleComparePathways}
+                    />
+                  </div>
+                )}
+                {activeSidebarItem === 'flows' && (
+                  <FlowTemplates
+                    flowTemplates={flowTemplates}
+                    onSelectTemplate={handleSelectTemplate}
+                    onSaveTemplate={handleSaveTemplate}
+                    onDeleteTemplate={handleDeleteTemplate}
+                    onCreateTemplate={handleCreateTemplate}
+                    currentParameters={currentParameters}
                   />
-                </div>
-              )}
-              {activeSidebarItem === 'flows' && (
-                <FlowTemplates
-                  flowTemplates={flowTemplates}
-                  onSelectTemplate={handleSelectTemplate}
-                  onSaveTemplate={handleSaveTemplate}
-                  onDeleteTemplate={handleDeleteTemplate}
-                  onCreateTemplate={handleCreateTemplate}
-                  currentParameters={currentParameters}
-                />
-              )}
-              {activeSidebarItem === 'impact-results' && <ImpactResults />}
-              {activeSidebarItem === 'team-management' && <TeamManagement />}
-              {activeSidebarItem === 'parameters' && (
-                <Parameters 
-                  currentParameters={currentParameters} 
-                  onParametersChange={setCurrentParameters}
-                />
-              )}
-              {activeSidebarItem === 'user-profile' && <UserProfile />}
-              {activeSidebarItem === 'settings' && <AppSettings />}
-            </div>
-          ) : (
-            <EditorArea
-              tabs={tabs}
-              activeTab={activeTab}
-              onTabChange={handleTabChange}
-              onTabClose={handleTabClose}
-              onNewTab={handleNewTab}
-            />
-          )}
+                )}
+                {activeSidebarItem === 'impact-results' && <ImpactResults />}
+                {activeSidebarItem === 'team-management' && <TeamManagement />}
+                {activeSidebarItem === 'parameters' && (
+                  <Parameters 
+                    currentParameters={currentParameters} 
+                    onParametersChange={setCurrentParameters}
+                  />
+                )}
+                {activeSidebarItem === 'user-profile' && <UserProfile />}
+                {activeSidebarItem === 'settings' && <AppSettings />}
+              </div>
+            ) : (
+              <EditorArea
+                tabs={tabs}
+                activeTab={activeTab}
+                onTabChange={handleTabChange}
+                onTabClose={handleTabClose}
+                onNewTab={handleNewTab}
+              />
+            )}
+          </div>
         </div>
-      </div>
 
-      {currentPage === 'results' && currentReport && (
-        <LCAResultsPage
-          formData={currentReport.formData}
-          insights={currentInsights}
-          onBack={handleBackToDashboard}
-          onExport={(format) => console.log(`Export in ${format} format requested`)}
-        />
-      )}
+        {currentPage === 'results' && currentReport && (
+          <LCAResultsPage
+            formData={currentReport.formData}
+            insights={currentInsights}
+            onBack={handleBackToDashboard}
+            onExport={(format) => console.log(`Export in ${format} format requested`)}
+          />
+        )}
+      </Suspense>
     </div>
   );
 };
